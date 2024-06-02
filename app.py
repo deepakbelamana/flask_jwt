@@ -7,13 +7,6 @@ import base64
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'notasecuredkey'
 
-def base64_url_decode(input):
-    rem = len(input) % 4
-    if rem > 0:
-        input += '=' * (4 - rem)
-    print('input : ',input)
-    return base64.urlsafe_b64decode(input)
-
 def token_required(f):
     @wraps(f)
     def decorator(*args, **kwargs):
@@ -23,9 +16,9 @@ def token_required(f):
             return jsonify({'message': 'Token is missing'}), 401
         
         try:
-            # Decode without verifying the signature to inspect payload
-            payload = base64_url_decode(token.split('.')[1] + '==').decode('utf-8')
-            print("Payload:", payload)
+            # # Decode without verifying the signature to inspect payload
+            # payload = base64_url_decode(token.split('.')[1] + '==').decode('utf-8')
+            # print("Payload:", payload)
             
             data = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
             print("Decoded data:", data)
