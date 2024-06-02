@@ -1,49 +1,64 @@
-import datetime
 from functools import wraps
-from flask import Flask,jsonify,session,render_template,request
+from flask import Flask, jsonify, make_response, request, render_template
 import jwt
+import datetime
+import base64
 
-app=Flask(__name__)
-app.config['SECURITY_KEY']='16b6e8fb778e418789a0e9ab90e0da9c'
-app.secret_key='16b6e8fb778e418789a0e9ab90e0da9c'
+app = Flask(__name__)
+app.config['SECRET_KEY'] = 'notasecuredkey'
 
-def token_required(func):
-    @wraps (func)
-    def decorated(*args, **kwargs):
+def base64_url_decode(input):
+    rem = len(input) % 4
+    if rem > 0:
+        input += '=' * (4 - rem)
+    print('input : ',input)
+    return base64.urlsafe_b64decode(input)
+
+def token_required(f):
+    @wraps(f)
+    def decorator(*args, **kwargs):
         token = request.args.get('token')
+        print("Token:", token)
         if not token:
-         return jsonify({'Alert!': 'Token is missing!' })
+            return jsonify({'message': 'Token is missing'}), 401
+        
         try:
-            payload = jwt.decode(token, app.secret_key)
-            return payload
-        except:
-            return jsonify({'Alert!': 'Invalid Token!' })
-    return decorated
+            # Decode without verifying the signature to inspect payload
+            payload = base64_url_decode(token.split('.')[1] + '==').decode('utf-8')
+            print("Payload:", payload)
+            
+            data = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
+            print("Decoded data:", data)
+        except Exception as e:
+            print("Error decoding token:", e)
+            return jsonify({'message': 'Token is invalid'}), 401
+        
+        return f(*args, **kwargs)
+    return decorator
 
-
-@app.route('/')
-def home():
-    if not session.get('logged_in'):
-        return render_template('login.html')
-    else: 
-        return 'logged in currently'
-
-@app.route('/login',methods=['post'])
+@app.route('/login', methods=['POST', 'GET'])
 def login():
-    if request.form['username'] and request.form['password'] == 'amadmin':
-        session['logged_in']=True
-        token=jwt.encode({
-            'username': request.form['username'],
-            'expiration': str(datetime.datetime.now()+datetime.timedelta(seconds=120))},app.secret_key)
-        return jsonify({'token':token})
-    else: 
-        return 'invalid credentials'
+    if request.method == 'GET':
+        return render_template('login.html')
     
-@token_required
-@app.route('/user')
-@token_required
-def user():
-    return render_template('user.html')
+    if request.form['password'] == 'admin':
+        payload = {
+            'user': request.form['username'],
+            'exp': datetime.datetime.utcnow() + datetime.timedelta(seconds=60)
+        }
+        token = jwt.encode(payload, app.config['SECRET_KEY'], algorithm='HS256')
+        return jsonify({'token': token})
     
-if(__name__=='__main__'):
+    return make_response('Could not verify', 401)
+
+@app.route('/protected')
+@token_required
+def protected():
+    return 'This is only available for users with a valid token.'
+
+@app.route('/unprotected')
+def unprotected():
+    return 'This is available for everyone!'
+
+if __name__ == '__main__':
     app.run(debug=True)
